@@ -1,0 +1,21 @@
+price_category,rank_in_category,title,price_final,review_count
+1 Free,1,Team Fortress 2,0.0,319491
+1 Free,2,Dota 2,0.0,216914
+1 Free,3,Paladins®,0.0,204176
+1 Free,4,Destiny 2,0.0,185527
+1 Free,5,Grand Theft Auto V,0.0,163909
+2 Under 10,1,Wallpaper Engine,4.0,190129
+2 Under 10,2,Among Us,3.0,171665
+2 Under 10,3,Sid Meier’s Civilization® VI,6.0,153964
+2 Under 10,4,Tomb Raider,2.99,107789
+2 Under 10,5,Counter-Strike: Source,9.99,85502
+3 10-30,1,Counter-Strike: Global Offensive,15.0,219737
+3 10-30,2,Fallout 4,20.0,196789
+3 10-30,3,Tom Clancy's Rainbow Six® Siege,20.0,189603
+3 10-30,4,Left 4 Dead 2,10.0,179684
+3 10-30,5,Euro Truck Simulator 2,20.0,179407
+4 30+,1,Rust,40.0,270684
+4 30+,2,Cyberpunk 2077,60.0,226414
+4 30+,3,The Witcher® 3: Wild Hunt,40.0,204166
+4 30+,4,DARK SOULS™ III,30.0,190157
+4 30+,5,No Man's Sky,60.0,171816

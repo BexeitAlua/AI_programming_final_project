@@ -1,0 +1,17 @@
+{
+  "source": "full",
+  "db_path": "/Users/alllukaaa/Desktop/AI_programming_final_project/data/steam.db",
+  "games": 50872,
+  "tags": 441,
+  "game_tags": 584215,
+  "users": 14306064,
+  "reviews": 41154773,
+  "foreign_key_violations": 0,
+  "db_size_mb": 3660.5,
+  "timings": {
+    "games_users_tags_sec": 16.23,
+    "reviews_sec": 146.26,
+    "indexes_sec": 36.4,
+    "fk_check_sec": 43.56
+  }
+}

@@ -8,8 +8,6 @@ Compared methods: popularity baseline, item-based CF, ALS (temporal split, Recal
 Source: **Game Recommendations on Steam** (Kaggle, Anton Kozyriev) —
 https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 
-The raw files are **not** stored in this repository. Download the archive from Kaggle,
-unzip it and copy these four files into `data/raw/`:
 
 | File | Columns / role |
 |---|---|
@@ -28,13 +26,13 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## Preprocessing (steps 4–5)
+## Preprocessing 
 
 Run from the project root:
 
 ```bash
-python -m src.preprocessing                  # full file (several minutes)
-python -m src.preprocessing --max-chunks 4   # quick test on the first 2M rows
+python -m src.preprocessing                 
+python -m src.preprocessing --max-chunks 4   
 ```
 
 Options: `--chunksize 500000 --buckets 16 --sample-users 50000 --min-interactions 5 --seed 42`.

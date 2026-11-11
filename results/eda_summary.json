@@ -1,0 +1,98 @@
+{
+  "rows": 41154773,
+  "top_games": {
+    "top_games": {
+      "Team Fortress 2": 319491,
+      "Rust": 270684,
+      "Cyberpunk 2077": 226414,
+      "Counter-Strike: Global Offensive": 219737,
+      "Dota 2": 216914,
+      "Paladins®": 204176,
+      "The Witcher® 3: Wild Hunt": 204166,
+      "Fallout 4": 196789,
+      "DARK SOULS™ III": 190157,
+      "Wallpaper Engine": 190129,
+      "Tom Clancy's Rainbow Six® Siege": 189603,
+      "Destiny 2": 185527,
+      "Left 4 Dead 2": 179684,
+      "Euro Truck Simulator 2": 179407,
+      "No Man's Sky": 171816,
+      "Among Us": 171665,
+      "Grand Theft Auto V": 163909,
+      "ARK: Survival Evolved": 159736,
+      "Brawlhalla": 159720,
+      "Borderlands 2": 158945
+    },
+    "top20_share_of_reviews": 0.0962
+  },
+  "long_tail": {
+    "games_with_reviews": 37610,
+    "top1pct_games_share": 0.5561,
+    "top10pct_games_share": 0.9159,
+    "games_with_lt_10_reviews": 6384,
+    "median_reviews_per_game": 39.0
+  },
+  "degrees": {
+    "n_users": 13781059,
+    "user_median_reviews": 1.0,
+    "user_mean_reviews": 2.99,
+    "users_with_1_review_share": 0.5495,
+    "users_with_5plus_reviews_share": 0.1387,
+    "n_games": 37610,
+    "game_median_reviews": 39.0,
+    "game_mean_reviews": 1094.25
+  },
+  "hours": {
+    "median_hours": 27.3,
+    "mean_hours": 100.6,
+    "p90_hours": 304.0,
+    "max_hours": 1000.0,
+    "zero_hours_share": 0.0043,
+    "share_at_max": 0.0,
+    "median_hours_positive": 30.3,
+    "median_hours_negative": 11.1
+  },
+  "time": {
+    "positive_share": 0.8578,
+    "peak_month": "2022-11",
+    "peak_month_reviews": 1282247,
+    "reviews_by_year": {
+      "2010": 12201,
+      "2011": 71546,
+      "2012": 101726,
+      "2013": 335335,
+      "2014": 1143155,
+      "2015": 1477096,
+      "2016": 2226413,
+      "2017": 2834442,
+      "2018": 2845219,
+      "2019": 4226832,
+      "2020": 7488439,
+      "2021": 8802848,
+      "2022": 9589521
+    },
+    "positive_share_by_year": {
+      "2010": 0.9739,
+      "2011": 0.965,
+      "2012": 0.9599,
+      "2013": 0.9307,
+      "2014": 0.8796,
+      "2015": 0.8347,
+      "2016": 0.8349,
+      "2017": 0.8221,
+      "2018": 0.8132,
+      "2019": 0.8682,
+      "2020": 0.8834,
+      "2021": 0.8688,
+      "2022": 0.8488
+    }
+  },
+  "sparsity": {
+    "n_users": 13781059,
+    "n_games": 37610,
+    "interactions": 41154773,
+    "density": 7.940251986110308e-05,
+    "sparsity": 0.999920597480139,
+    "dense_matrix_gb_float32": 1930.8
+  }
+}
