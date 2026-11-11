@@ -1,0 +1,11 @@
+{
+  "seed": 42,
+  "min_interactions": 5,
+  "eligible_users": 1910830,
+  "sampled_users": 50000,
+  "sample_rows": 595950,
+  "sample_games": 22666,
+  "positive_share": 0.8496,
+  "min_date": "2010-10-16",
+  "max_date": "2022-12-31"
+}

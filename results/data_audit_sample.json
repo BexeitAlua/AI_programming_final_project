@@ -1,0 +1,38 @@
+{
+  "rows": 100000,
+  "missing_by_column": {
+    "app_id": 0,
+    "helpful": 0,
+    "funny": 0,
+    "date": 0,
+    "is_recommended": 0,
+    "hours": 0,
+    "user_id": 0,
+    "review_id": 0
+  },
+  "duplicate_full_rows": 0,
+  "duplicate_pairs_user_app": 0,
+  "n_users": 98803,
+  "n_games": 208,
+  "duplicate_review_id": 0,
+  "min_hours": 0.0,
+  "max_hours": 999.9,
+  "median_hours": 99.2,
+  "negative_hours": 0,
+  "zero_hours": 2,
+  "min_date": "2010-11-03",
+  "max_date": "2022-12-31",
+  "unparseable_dates": 0,
+  "dates_before_steam_launch": 0,
+  "dates_in_future": 0,
+  "is_recommended_values": {
+    "True": 84661,
+    "False": 15339
+  },
+  "positive_share": 0.8466,
+  "reviews_with_unknown_app_id": 0,
+  "unknown_app_ids": 0,
+  "games_duplicate_app_id": 0,
+  "reviews_with_unknown_user_id": 0,
+  "users_duplicate_user_id": 0
+}

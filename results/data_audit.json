@@ -1,0 +1,72 @@
+{
+  "raw_file": {
+    "rows": 41154794,
+    "missing_by_column": {
+      "app_id": 0,
+      "date": 0,
+      "is_recommended": 0,
+      "hours": 0,
+      "user_id": 0,
+      "review_id": 0
+    },
+    "min_hours": 0.0,
+    "max_hours": 1000.0,
+    "min_date_raw": "2010-10-15",
+    "max_date_raw": "2022-12-31",
+    "is_recommended_values": {
+      "True": 35304398,
+      "False": 5850396
+    }
+  },
+  "games": {
+    "rows": 50872,
+    "unique_app_id": 50872
+  },
+  "users": {
+    "rows": 14306064,
+    "unique_user_id": 14306064
+  },
+  "removed_rows_by_rule": {
+    "missing_keys": 0,
+    "bad_date": 0,
+    "bad_flag": 0,
+    "bad_hours": 0,
+    "unknown_app": 0,
+    "unknown_user": 0,
+    "dup_review_id": 0,
+    "dup_pair": 21
+  },
+  "final_rows": 41154773,
+  "kept_share": 0.999999,
+  "memory": {
+    "chunksize": 500000,
+    "chunks": 83,
+    "pandas_default_mb_total": 2001.8,
+    "optimized_mb_total": 981.1,
+    "reduction_pct": 51.0,
+    "parquet_on_disk_mb": 489.9,
+    "csv_on_disk_mb": 1929.5,
+    "peak_process_rss_mb": 1300.203125
+  },
+  "timings_sec": {
+    "convert games/users/metadata": 2.567,
+    "pass 1: chunked cleaning": 24.18,
+    "pass 2: global deduplication": 21.808,
+    "experiment sample": 1.727
+  },
+  "sample": {
+    "seed": 42,
+    "min_interactions": 5,
+    "eligible_users": 1910830,
+    "sampled_users": 50000,
+    "sample_rows": 595950,
+    "sample_games": 22666,
+    "positive_share": 0.8496,
+    "min_date": "2010-10-16",
+    "max_date": "2022-12-31"
+  },
+  "parameters": {
+    "n_buckets": 16,
+    "max_chunks": null
+  }
+}

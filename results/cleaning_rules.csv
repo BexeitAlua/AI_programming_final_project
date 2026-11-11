@@ -1,0 +1,10 @@
+problem,rule,reason,rows_affected
+Missing user_id / app_id / date,Drop the row,"An interaction without user, game or time cannot be used in the matrix or the temporal split",0
+"Unparseable date or date outside [2003-09-12, today]",Drop the row,Wrong dates would break the temporal train/test split,0
+is_recommended is not true/false,Drop the row,The target (positive feedback) is undefined,0
+hours missing or negative,Drop the row,Playtime is used as confidence weight 1 + a*log1p(hours); it must be >= 0,0
+app_id not present in games.csv,Drop the row (configurable),Game has no title/metadata and would violate the FK reviews.app_id -> games,0
+user_id not present in users.csv,Drop the row (configurable),Would violate the FK reviews.user_id -> users,0
+Duplicate review_id,Keep the first occurrence,review_id is the primary key of a review,0
+"Several reviews for the same (user_id, app_id)",Keep the latest by date,Steam keeps one review per user and game; the latest one is the current opinion,21
+Very large hours values (long tail),"Keep, do not clip; use log1p(hours) later","Large playtime is real behaviour, not an error",
