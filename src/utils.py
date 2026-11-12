@@ -57,3 +57,27 @@ def save_json(obj: dict, path: Path) -> Path:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2, ensure_ascii=False, default=str)
     return path
+
+
+def matrix_memory_summary(mat):
+    n_users, n_games = mat.shape
+
+    csr_bytes = (
+        mat.data.nbytes
+        + mat.indices.nbytes
+        + mat.indptr.nbytes
+    )
+
+    dense_bytes = n_users * n_games * mat.dtype.itemsize
+
+    sparsity = 1 - mat.nnz / (n_users * n_games)
+
+    return {
+        "n_users": n_users,
+        "n_games": n_games,
+        "nnz": mat.nnz,
+        "sparsity": sparsity,
+        "csr_mb": csr_bytes / 1024**2,
+        "dense_mb": dense_bytes / 1024**2,
+        "memory_reduction": dense_bytes / csr_bytes
+    }

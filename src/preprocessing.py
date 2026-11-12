@@ -519,6 +519,65 @@ def run_preprocessing(chunksize: int = 500_000,
     return audit
 
 
+def temporal_split(df, train_ratio=0.7, val_ratio=0.1):
+    df = df.sort_values("date").copy()
+
+    train_cutoff = df["date"].quantile(train_ratio)
+    test_cutoff = df["date"].quantile(
+        train_ratio + val_ratio
+    )
+
+    train = df[df["date"] < train_cutoff].copy()
+
+    val = df[
+        (df["date"] >= train_cutoff)
+        & (df["date"] < test_cutoff)
+    ].copy()
+
+    test = df[
+        df["date"] >= test_cutoff
+    ].copy()
+
+    return train, val, test
+
+
+from scipy.sparse import csr_matrix
+
+
+def build_user_item_matrix(train):
+    # последний отзыв каждой пары
+    pos = (
+        train.sort_values("date")
+        .drop_duplicates(
+            ["user_id", "app_id"], keep="last"
+        )
+    )
+
+    pos = pos[
+        pos["is_recommended"].eq(True)
+    ].copy()
+
+    users = pos["user_id"].unique()
+    items = pos["app_id"].unique()
+
+    u_map = {u: i for i, u in enumerate(users)}
+    i_map = {a: j for j, a in enumerate(items)}
+
+    rows = pos["user_id"].map(u_map).to_numpy()
+    cols = pos["app_id"].map(i_map).to_numpy()
+
+    weights = (
+        1 + np.log1p(pos["hours"].clip(lower=0))
+    ).astype("float32")
+
+    mat = csr_matrix(
+        (weights, (rows, cols)),
+        shape=(len(users), len(items)),
+        dtype=np.float32
+    )
+
+    return mat, u_map, i_map
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Clean recommendations.csv into Parquet")
     parser.add_argument("--chunksize", type=int, default=500_000)
