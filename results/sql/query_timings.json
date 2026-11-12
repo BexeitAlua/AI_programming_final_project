@@ -1,12 +1,12 @@
 {
-  "q01_table_sizes": 0.35,
-  "q02_top20_games_by_reviews": 1.17,
-  "q03_avg_hours_per_game": 16.9,
-  "q04_popular_and_liked_games": 15.62,
-  "q05_activity_by_year": 60.53,
-  "q06_games_above_average_popularity": 0.7,
-  "q07_rank_within_price_category": 1.55,
-  "q08_top_game_each_year": 19.34,
-  "q09_tags_by_positive_share": 15.22,
-  "q10_user_activity_segments": 3.94
+  "q01_table_sizes": 0.31,
+  "q02_top20_games_by_reviews": 1.29,
+  "q03_avg_hours_per_game": 16.28,
+  "q04_popular_and_liked_games": 16.27,
+  "q05_activity_by_year": 65.7,
+  "q06_games_above_average_popularity": 0.71,
+  "q07_rank_within_price_category": 1.41,
+  "q08_top_game_each_year": 19.17,
+  "q09_tags_by_positive_share": 15.88,
+  "q10_user_activity_segments": 3.98
 }

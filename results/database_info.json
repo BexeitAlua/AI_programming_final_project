@@ -9,9 +9,9 @@
   "foreign_key_violations": 0,
   "db_size_mb": 3660.5,
   "timings": {
-    "games_users_tags_sec": 16.23,
-    "reviews_sec": 146.26,
-    "indexes_sec": 36.4,
-    "fk_check_sec": 43.56
+    "games_users_tags_sec": 19.1,
+    "reviews_sec": 146.31,
+    "indexes_sec": 32.38,
+    "fk_check_sec": 43.33
   }
 }
