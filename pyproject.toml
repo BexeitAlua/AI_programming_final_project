@@ -1,0 +1,37 @@
+[project]
+name = "steam-game-recommender"
+version = "0.1.0"
+description = "Steam game recommendations: popularity, ALS and Two-Tower models"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "implicit==0.7.3",
+    "ipykernel==6.31.0",
+    "jupyter==1.1.1",
+    "matplotlib==3.9.4",
+    "numpy==2.0.2",
+    "pandas==2.3.3",
+    "plotly==7.1.0",
+    "psutil==7.2.2",
+    "pyarrow==21.0.0",
+    "scipy==1.13.1",
+    "threadpoolctl==3.7.0",
+    "torch==2.15.0",
+]
+
+[dependency-groups]
+dev = ["pytest==9.2.0"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
