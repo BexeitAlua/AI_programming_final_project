@@ -41,27 +41,27 @@
   "memory": {
     "chunksize": 500000,
     "chunks": 83,
-    "pandas_default_mb_total": 2001.8,
+    "pandas_default_mb_total": 3610.9,
     "optimized_mb_total": 981.1,
-    "reduction_pct": 51.0,
-    "parquet_on_disk_mb": 489.9,
+    "reduction_pct": 72.8,
+    "parquet_on_disk_mb": 495.9,
     "csv_on_disk_mb": 1929.5,
-    "peak_process_rss_mb": 1435.1875
+    "peak_process_rss_mb": 640.6171875
   },
   "timings_sec": {
-    "convert games/users/metadata": 2.344,
-    "pass 1: chunked cleaning": 23.689,
-    "pass 2: global deduplication": 20.598,
-    "experiment sample": 1.788
+    "convert games/users/metadata": 6.78,
+    "pass 1: chunked cleaning": 103.842,
+    "pass 2: global deduplication": 34.799,
+    "experiment sample": 6.324
   },
   "sample": {
     "seed": 42,
     "min_interactions": 5,
     "eligible_users": 1910830,
     "sampled_users": 50000,
-    "sample_rows": 595950,
-    "sample_games": 22666,
-    "positive_share": 0.8496,
+    "sample_rows": 583683,
+    "sample_games": 21155,
+    "positive_share": 0.8474,
     "min_date": "2010-10-16",
     "max_date": "2022-12-31"
   },

@@ -3,9 +3,9 @@
   "min_interactions": 5,
   "eligible_users": 1910830,
   "sampled_users": 50000,
-  "sample_rows": 595950,
-  "sample_games": 22666,
-  "positive_share": 0.8496,
+  "sample_rows": 583683,
+  "sample_games": 21155,
+  "positive_share": 0.8474,
   "min_date": "2010-10-16",
   "max_date": "2022-12-31"
 }

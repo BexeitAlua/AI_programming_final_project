@@ -432,7 +432,8 @@ def build_experiment_sample(n_users: int = 50_000,
                             out_dir: Path = PROCESSED_DIR) -> dict:
 
     user_counts = load_clean_reviews(["user_id"], out_dir)["user_id"].value_counts()
-    eligible = user_counts[user_counts >= min_interactions].index.to_numpy()
+    # sort: value_counts() tie order differs between pandas versions -> different sample for the same seed
+    eligible = np.sort(user_counts[user_counts >= min_interactions].index.to_numpy())
     if len(eligible) == 0:
         raise ValueError(f"No users with >= {min_interactions} reviews")
     rng = np.random.default_rng(seed)
