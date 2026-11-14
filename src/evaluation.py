@@ -1,26 +1,25 @@
 """Offline evaluation protocol shared by all recommenders.
 
-Protocol
---------
 * split 'val'  : fit on train,       evaluate on val   (model selection / tuning)
 * split 'test' : fit on train + val, evaluate on test  (final numbers)
 * relevant items  = target-period reviews with is_recommended = True
 * evaluated users = users with history and >= 1 relevant item in the target period
-* every game from the user's history (positive or negative) is excluded from recommendations
-* metrics are also split by game type: 'warm' = game present in history, 'cold' = new game.
-  ID-based models cannot recommend cold games, `recall_ceiling` shows the resulting upper bound.
+* games from the user's history (liked or not) are excluded from recommendations
+* 'warm' game = present in history, 'cold' game = new. ID-based models cannot recommend cold
+  games, `recall_ceiling` is the best recall they could reach.
 """
 from __future__ import annotations
 
 import argparse
 import json
 from dataclasses import dataclass
+from itertools import product
 
 import numpy as np
 import pandas as pd
 
 from src.preprocessing import temporal_split
-from src.recommenders import BaseRecommender, PopularityRecommender
+from src.recommenders import ALSRecommender, BaseRecommender, PopularityRecommender
 from src.utils import PROCESSED_DIR, RESULTS_DIR, save_json
 
 METRICS_DIR = RESULTS_DIR / "metrics"
@@ -61,57 +60,53 @@ def build_eval_data(history: pd.DataFrame, target: pd.DataFrame) -> EvalData:
 
 
 def evaluate(recs: np.ndarray, data: EvalData, ks: tuple = DEFAULT_KS) -> dict:
-    """Recall@K, NDCG@K, HitRate@K, Coverage@K (+ warm/cold recall).
+    """Recall@K, NDCG@K, HitRate@K, Coverage@K and recall on warm / cold games.
 
     `recs` is [n_users, >= max(ks)] app_ids in rank order, rows aligned with data.user_ids,
     -1 for empty slots, no duplicates within a row.
     """
-    n, kmax = len(data.user_ids), max(ks)
-    if recs.ndim != 2 or recs.shape[0] != n or recs.shape[1] < kmax:
-        raise ValueError(f"recs must have shape ({n}, >={kmax}), got {recs.shape}")
+    n_users, kmax = len(data.user_ids), max(ks)
+    if recs.ndim != 2 or recs.shape[0] != n_users or recs.shape[1] < kmax:
+        raise ValueError(f"recs must have shape ({n_users}, >={kmax}), got {recs.shape}")
 
-    rel = pd.DataFrame({
-        "row": np.repeat(np.arange(n), [len(r) for r in data.relevant]),
-        "app_id": np.concatenate(data.relevant).astype(np.int64),
-    })
-    rel["warm"] = np.isin(rel["app_id"].to_numpy(), data.catalog).astype(float)
-    n_rel = np.bincount(rel["row"], minlength=n)
-    n_warm = np.bincount(rel["row"], weights=rel["warm"], minlength=n)
-    n_cold = n_rel - n_warm
+    catalog = set(data.catalog.tolist())
+    relevant_sets = [set(r.tolist()) for r in data.relevant]
+    discount = 1 / np.log2(np.arange(2, kmax + 2))
 
-    ranked = pd.DataFrame({
-        "row": np.repeat(np.arange(n), kmax),
-        "rank": np.tile(np.arange(kmax), n),
-        "app_id": recs[:, :kmax].astype(np.int64).ravel(),
-    })
-    hits = ranked.merge(rel, on=["row", "app_id"])  # one line per hit, with its rank
-
-    disc = 1.0 / np.log2(np.arange(2, kmax + 2))
-    idcg_cum = np.cumsum(disc)
-    has_warm, has_cold = n_warm > 0, n_cold > 0
-
-    out = {
-        "n_users": int(n),
-        "n_relevant": int(n_rel.sum()),
-        "cold_share": float(n_cold.sum() / n_rel.sum()),
-        "recall_ceiling": float(np.mean(n_warm / n_rel)),
+    n_relevant = sum(len(r) for r in relevant_sets)
+    n_cold = sum(len(r - catalog) for r in relevant_sets)
+    result = {
+        "n_users": n_users,
+        "n_relevant": n_relevant,
+        "cold_share": n_cold / n_relevant,
+        "recall_ceiling": np.mean([len(r & catalog) / len(r) for r in relevant_sets]),
     }
+
     for k in ks:
-        h = hits[hits["rank"] < k]
-        n_hits = np.bincount(h["row"], minlength=n)
-        dcg = np.bincount(h["row"], weights=disc[h["rank"]], minlength=n)
-        idcg = idcg_cum[np.minimum(n_rel, k) - 1]
-        hits_warm = np.bincount(h["row"], weights=h["warm"], minlength=n)
-        hits_cold = n_hits - hits_warm
+        recall, ndcg, hit_rate, recall_warm, recall_cold = [], [], [], [], []
+        for relevant, row in zip(relevant_sets, recs[:, :k].tolist()):
+            hits = [app in relevant for app in row]
+            ideal_dcg = discount[: min(len(relevant), k)].sum()
+            recall.append(sum(hits) / len(relevant))
+            ndcg.append(np.dot(hits, discount[:k]) / ideal_dcg)
+            hit_rate.append(any(hits))
+
+            warm, cold = relevant & catalog, relevant - catalog
+            if warm:
+                recall_warm.append(len(warm.intersection(row)) / len(warm))
+            if cold:
+                recall_cold.append(len(cold.intersection(row)) / len(cold))
+
         top = recs[:, :k]
-        out[f"recall@{k}"] = float(np.mean(n_hits / n_rel))
-        out[f"ndcg@{k}"] = float(np.mean(dcg / idcg))
-        out[f"hit_rate@{k}"] = float(np.mean(n_hits > 0))
-        out[f"recall_warm@{k}"] = float(np.mean(hits_warm[has_warm] / n_warm[has_warm]))
-        out[f"recall_cold@{k}"] = (float(np.mean(hits_cold[has_cold] / n_cold[has_cold]))
-                                   if has_cold.any() else float("nan"))
-        out[f"coverage@{k}"] = float(len(np.unique(top[top >= 0])) / len(data.catalog))
-    return {key: round(v, 5) if isinstance(v, float) else v for key, v in out.items()}
+        result[f"recall@{k}"] = np.mean(recall)
+        result[f"ndcg@{k}"] = np.mean(ndcg)
+        result[f"hit_rate@{k}"] = np.mean(hit_rate)
+        result[f"recall_warm@{k}"] = np.mean(recall_warm)
+        result[f"recall_cold@{k}"] = np.mean(recall_cold) if recall_cold else float("nan")
+        result[f"coverage@{k}"] = len(np.unique(top[top >= 0])) / len(catalog)
+
+    return {key: value if isinstance(value, int) else round(float(value), 5)
+            for key, value in result.items()}
 
 
 def evaluate_model(model: BaseRecommender, data: EvalData, ks: tuple = DEFAULT_KS,
@@ -150,14 +145,14 @@ SHOW_COLS = ["model", "split", "recall@10", "ndcg@10", "hit_rate@10", "recall@10
              "recall_warm@10", "coverage@10", "recall_ceiling"]
 
 
-def run_popularity(windows: tuple = (None, 30, 90, 180, 365), ks: tuple = DEFAULT_KS) -> pd.DataFrame:
+def run_popularity(windows: tuple = (None, 30, 90, 180, 365)) -> pd.DataFrame:
     """Tune the popularity window on val (by NDCG@10), then report all-time and best window on test."""
     history, target = load_split("val")
     data = build_eval_data(history, target)
     val_scores = {}
     for window in windows:
         model = PopularityRecommender(window).fit(history)
-        metrics = evaluate_model(model, data, ks)
+        metrics = evaluate_model(model, data)
         save_metrics(metrics, model.name, "val")
         val_scores[window] = metrics["ndcg@10"]
     best = max(val_scores, key=val_scores.get)
@@ -165,17 +160,47 @@ def run_popularity(windows: tuple = (None, 30, 90, 180, 365), ks: tuple = DEFAUL
 
     history, target = load_split("test")
     data = build_eval_data(history, target)
-    for window in dict.fromkeys((None, best)):
+    test_windows = [None] if best is None else [None, best]
+    for window in test_windows:
         model = PopularityRecommender(window).fit(history)
-        save_metrics(evaluate_model(model, data, ks), model.name, "test")
+        save_metrics(evaluate_model(model, data), model.name, "test")
+    return metrics_table()
+
+
+def run_als(factors=(32, 64, 128), regularizations=(0.01, 0.1, 1.0), alphas=(1, 10, 40)) -> pd.DataFrame:
+    """Grid search on val (by NDCG@10), then refit the best ALS on train + val and report test.
+
+    Users without positive reviews in history get all-time popularity.
+    """
+    history, target = load_split("val")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    grid = []
+    for f, reg, alpha in product(factors, regularizations, alphas):
+        model = ALSRecommender(f, reg, alpha).fit(history)
+        metrics = evaluate_model(model, data, fallback=fallback)
+        grid.append({**model.params, **metrics})
+        print(f"factors={f:4d} reg={reg:<5} alpha={alpha:<3} ndcg@10={metrics['ndcg@10']:.4f} "
+              f"recall@10={metrics['recall@10']:.4f}")
+    pd.DataFrame(grid).to_csv(METRICS_DIR / "als_grid_val.csv", index=False)
+
+    best = max(grid, key=lambda row: row["ndcg@10"])
+    save_metrics(best, "als", "val")
+    params = {name: best[name] for name in ("factors", "regularization", "alpha", "iterations")}
+    print(f"best ALS on val: {params}")
+
+    history, target = load_split("test")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    model = ALSRecommender(**params).fit(history)
+    save_metrics({**params, **evaluate_model(model, data, fallback=fallback)}, "als", "test")
     return metrics_table()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate recommenders on the temporal split")
-    parser.add_argument("--model", choices=["popularity"], default="popularity")
+    parser.add_argument("--model", choices=["popularity", "als"], default="popularity")
     args = parser.parse_args()
-    if args.model == "popularity":
-        table = run_popularity()
+    table = run_popularity() if args.model == "popularity" else run_als()
     pd.set_option("display.width", 200)
     print(table[[c for c in SHOW_COLS if c in table.columns]].to_string(index=False))

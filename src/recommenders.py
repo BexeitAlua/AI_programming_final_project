@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from implicit.als import AlternatingLeastSquares
+from scipy.sparse import csr_matrix
+from threadpoolctl import threadpool_limits
+
+from src.preprocessing import build_user_item_matrix
 
 
 class BaseRecommender:
@@ -51,3 +56,42 @@ class PopularityRecommender(BaseRecommender):
     def recommend(self, user_ids: np.ndarray, seen: dict, k: int) -> np.ndarray:
         empty = np.empty(0, dtype=np.int64)
         return np.vstack([top_k_unseen(self.ranking, seen.get(u, empty), k) for u in user_ids])
+
+
+class ALSRecommender(BaseRecommender):
+    """Implicit ALS on positive reviews weighted by 1 + log1p(hours).
+
+    Games reviewed in the fit history (liked or not) are never recommended.
+    Users without positive reviews get no recommendations (-1); evaluation fills them with a fallback.
+    """
+
+    name = "als"
+
+    def __init__(self, factors: int = 64, regularization: float = 0.01, alpha: float = 1.0,
+                 iterations: int = 15):
+        self.params = {"factors": factors, "regularization": regularization,
+                       "alpha": alpha, "iterations": iterations}
+
+    def fit(self, history: pd.DataFrame) -> "ALSRecommender":
+        matrix, self.user_index, item_index = build_user_item_matrix(history)
+        self.item_ids = np.array(list(item_index))
+
+        known = history[history["user_id"].isin(list(self.user_index))
+                        & history["app_id"].isin(list(item_index))]
+        rows = known["user_id"].map(self.user_index)
+        cols = known["app_id"].map(item_index)
+        self.reviewed = csr_matrix((np.ones(len(known)), (rows, cols)), shape=matrix.shape)
+
+        with threadpool_limits(1, "blas"):
+            self.model = AlternatingLeastSquares(**self.params, random_state=42)
+            self.model.fit(matrix, show_progress=False)
+        return self
+
+    def recommend(self, user_ids: np.ndarray, seen: dict, k: int) -> np.ndarray:
+        recs = np.full((len(user_ids), k), -1, dtype=np.int64)
+        known = np.array([user in self.user_index for user in user_ids])
+        if known.any():
+            rows = np.array([self.user_index[user] for user in user_ids[known]])
+            ids, _ = self.model.recommend(rows, self.reviewed[rows], N=k)
+            recs[known] = self.item_ids[ids]
+        return recs
