@@ -13,3 +13,5 @@ __pycache__/
 *.pkl
 *.joblib
 *.npz
+# exported models (copied between machines by hand)
+models/
