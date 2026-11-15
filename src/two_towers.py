@@ -83,3 +83,10 @@ class TwoTowerModel(nn.Module):
         x = F.normalize(x, dim=-1)
         return x
 
+    def user_tower(self, items, weights, liked):
+        h = self.item_tower(items) + self.liked_embedding(liked)
+        numerator = (h * weights.unsqueeze(-1)).sum(1)
+        denominator = weights.sum(1, keepdim=True).clamp(min=1e-6)
+        u = numerator / denominator
+        u = self.user_mlp(u)
+        return F.normalize(u, dim=-1)
