@@ -20,7 +20,7 @@ import pandas as pd
 
 from src.preprocessing import temporal_split
 from src.ranker import RankerRecommender
-from src.recommenders import ALSRecommender, BaseRecommender, PopularityRecommender
+from src.recommenders import ALSRecommender, BaseRecommender, ItemCFRecommender, PopularityRecommender
 from src.two_towers import TwoTowerRecommender
 from src.utils import PROCESSED_DIR, RESULTS_DIR, save_json
 
@@ -199,6 +199,34 @@ def run_als(factors=(32, 64, 128), regularizations=(0.01, 0.1, 1.0), alphas=(1, 
     return metrics_table()
 
 
+def run_item_cf(neighbors: tuple = (10, 20, 50, 100, 200)) -> pd.DataFrame:
+    """Tune the number of neighbours per game on val (by NDCG@10), then refit on train + val and report test.
+
+    Users without positive reviews in history get all-time popularity.
+    """
+    history, target = load_split("val")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    grid = []
+    for n in neighbors:
+        model = ItemCFRecommender(n_neighbors=n).fit(history)
+        metrics = evaluate_model(model, data, fallback=fallback)
+        grid.append({**model.params, **metrics})
+        print(f"n_neighbors={n:4d} ndcg@10={metrics['ndcg@10']:.4f} recall@10={metrics['recall@10']:.4f}")
+    pd.DataFrame(grid).to_csv(METRICS_DIR / "item_cf_grid_val.csv", index=False)
+
+    best = max(grid, key=lambda row: row["ndcg@10"])
+    save_metrics(best, "item_cf", "val")
+    print(f"best Item-CF on val: n_neighbors={best['n_neighbors']}")
+
+    history, target = load_split("test")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    model = ItemCFRecommender(n_neighbors=best["n_neighbors"]).fit(history)
+    save_metrics({**model.params, **evaluate_model(model, data, fallback=fallback)}, "item_cf", "test")
+    return metrics_table()
+
+
 def run_two_tower(variant: str = "id", use_review_stats: bool = True, max_epochs: int = 40) -> pd.DataFrame:
     """Train on train epoch by epoch and pick the epoch with the best NDCG@10 on val,
     then refit on train + val for that many epochs and report test.
@@ -275,13 +303,13 @@ def run_ranker(n_candidates: int = 200) -> pd.DataFrame:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate recommenders on the temporal split")
-    parser.add_argument("--model", choices=["popularity", "als", "two_tower", "ranker"], default="popularity")
+    parser.add_argument("--model", choices=["popularity", "item_cf", "als", "two_tower", "ranker"], default="popularity")
     parser.add_argument("--variant", choices=["id", "content", "hybrid"], default="id",
                         help="Two-Tower item features")
     parser.add_argument("--no-review-stats", action="store_true",
                         help="Two-Tower content/hybrid without review count and positive share")
     args = parser.parse_args()
-    runners = {"popularity": run_popularity, "als": run_als, "ranker": run_ranker,
+    runners = {"popularity": run_popularity, "item_cf": run_item_cf, "als": run_als, "ranker": run_ranker,
                "two_tower": lambda: run_two_tower(args.variant, not args.no_review_stats)}
     table = runners[args.model]()
     pd.set_option("display.width", 200)

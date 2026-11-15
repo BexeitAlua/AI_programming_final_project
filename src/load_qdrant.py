@@ -16,11 +16,11 @@ from qdrant_client import QdrantClient, models
 PAYLOAD_FLOATS = ["log_reviews", "log_recent_reviews", "positive_share", "log_price", "log_age_days"]
 
 
-def main() -> None:
-    models_dir = Path(os.environ.get("MODELS_DIR", "models"))
-    collection = os.environ.get("QDRANT_COLLECTION", "games")
-    client = QdrantClient(url=os.environ.get("QDRANT_URL", "http://localhost:6333"),
-                          api_key=os.environ.get("QDRANT_API_KEY") or None)
+def load_collection(client: QdrantClient, models_dir: Path, collection: str = "games") -> int:
+    """(Re)create `collection` from models_dir/items.parquet and return the number of points.
+
+    Used by this script against a Qdrant server and by the FastAPI app in embedded mode (QDRANT_URL=:memory:).
+    """
     manifest = json.loads((models_dir / "manifest.json").read_text(encoding="utf-8"))
     items = pd.read_parquet(models_dir / "items.parquet")
 
@@ -40,7 +40,15 @@ def main() -> None:
         payload |= {name: float(getattr(row, name)) for name in PAYLOAD_FLOATS}
         points.append(models.PointStruct(id=int(row.app_id), vector=vector, payload=payload))
     client.upload_points(collection, points, batch_size=512, wait=True)
-    print(f"{collection}: {client.count(collection).count} points at {os.environ.get('QDRANT_URL', 'http://localhost:6333')}")
+    return client.count(collection).count
+
+
+def main() -> None:
+    models_dir = Path(os.environ.get("MODELS_DIR", "models"))
+    collection = os.environ.get("QDRANT_COLLECTION", "games")
+    url = os.environ.get("QDRANT_URL", "http://localhost:6333")
+    client = QdrantClient(url=url, api_key=os.environ.get("QDRANT_API_KEY") or None)
+    print(f"{collection}: {load_collection(client, models_dir, collection)} points at {url}")
 
 
 if __name__ == "__main__":

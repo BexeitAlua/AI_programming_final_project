@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.evaluation import build_eval_data, evaluate
-from src.recommenders import ALSRecommender, PopularityRecommender
+from src.recommenders import ALSRecommender, ItemCFRecommender, PopularityRecommender
 
 
 def _reviews(rows):
@@ -66,6 +66,19 @@ def test_als():
     assert sorted(recs[0]) == [12, 13]     # 10, 11 already liked
     assert sorted(recs[1]) == [11, 13]     # 12 was reviewed negatively -> also excluded
     assert recs[2].tolist() == [-1, -1]    # user 5 is unknown
+
+
+def test_item_cf():
+    model = ItemCFRecommender(n_neighbors=5).fit(HISTORY)
+    # 10 and 11 are liked together by user 1, 12 and 13 by user 4
+    assert model.similar_items(10)["app_id"].tolist() == [11]
+    assert np.isclose(model.similar_items(10)["similarity"].iloc[0], 1 / np.sqrt(2))
+    assert model.similar_items(999).empty
+    data = build_eval_data(HISTORY, TARGET)
+    recs = model.recommend(np.array([2, 1, 5]), data.seen, 3)
+    assert recs[0].tolist() == [11, 13, -1]   # 11 is similar to liked 10; 12 reviewed; 13 by popularity
+    assert recs[1].tolist() == [12, 13, -1]   # no unseen neighbours -> popular unseen games
+    assert recs[2].tolist() == [-1, -1, -1]   # user 5 is unknown
 
 
 if __name__ == "__main__":

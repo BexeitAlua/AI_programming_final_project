@@ -5,6 +5,7 @@ description = "Steam game recommendations: popularity, ALS and Two-Tower models"
 readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
+    "fastapi==0.115.6",
     "implicit==0.7.3",
     "ipykernel==6.31.0",
     "jupyter==1.1.1",
@@ -20,6 +21,7 @@ dependencies = [
     "sentence-transformers==6.3.0",
     "threadpoolctl==3.7.0",
     "torch==2.15.0",
+    "uvicorn==0.34.0",
 ]
 
 [dependency-groups]

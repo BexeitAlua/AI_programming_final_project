@@ -1,0 +1,6 @@
+*
+!app/
+!src/__init__.py
+!src/serving.py
+!src/load_qdrant.py
+**/__pycache__

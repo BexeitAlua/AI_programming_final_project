@@ -15,3 +15,5 @@ __pycache__/
 *.npz
 # exported models (copied between machines by hand)
 models/
+# build output (Hugging Face Space folder)
+build/

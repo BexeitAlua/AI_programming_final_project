@@ -28,6 +28,17 @@ uv sync                  # creates .venv with Python 3.12 and installs everythin
 uv add <package>         # add a dependency (updates pyproject.toml and uv.lock)
 ```
 
+Without uv, the same pinned versions are in `requirements.txt` (exported from `uv.lock`):
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+After `uv add`, regenerate it: `uv export --format requirements-txt --no-hashes --no-dev --no-annotate --no-header > requirements.txt`
+(keep the comment lines and the `--extra-index-url` line at the top). On macOS LightGBM also needs `brew install libomp`.
+
 On Linux/WSL `torch` is installed as the CPU build from the PyTorch index, on macOS from PyPI.
 
 Download the data into `data/raw/` (needs a Kaggle API token):
@@ -78,9 +89,27 @@ The notebook `notebooks/experiment.ipynb` shows the first look at the data (100k
 
 ```bash
 uv run python -m src.evaluation --model popularity
+uv run python -m src.evaluation --model item_cf
 uv run python -m src.evaluation --model als
 uv run pytest
 ```
 
+Models (`src/recommenders.py`): popularity baseline, item-based collaborative filtering (cosine similarity
+between games, top-N neighbours per game, tuned on val) and ALS; Two-Tower and the LightGBM ranker are in
+`src/two_towers.py` and `src/ranker.py`.
+
 Protocol (`src/evaluation.py`): tune on val (fit on train), final numbers on test (fit on train + val).
 Metrics are saved to `results/metrics/`.
+
+## Console menu
+
+```bash
+uv run python main.py                  # Popularity, Item-CF, ALS (+ Two-Tower if Qdrant is running)
+uv run python main.py --no-two-tower   # without Qdrant and models/
+```
+
+Actions: 1 search games by title, 2 recommendations for a user, 3 similar games (Item-CF),
+4 test metrics of all models, 5 save the last recommendations to `results/recommendations/saved_recommendations.csv`, 0 exit.
+The three classic models are fitted on the experiment sample at startup (a few seconds); the menu suggests example user_ids.
+Unknown users and users without liked games get the most popular games. Two-Tower needs `models/` and the
+Qdrant collection (see `SERVICE_SPEC.md`: `docker compose up -d qdrant`, then `uv run --env-file .env python -m src.load_qdrant`).

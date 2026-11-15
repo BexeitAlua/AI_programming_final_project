@@ -46,13 +46,13 @@
     "reduction_pct": 72.8,
     "parquet_on_disk_mb": 495.9,
     "csv_on_disk_mb": 1929.5,
-    "peak_process_rss_mb": 642.5625
+    "peak_process_rss_mb": 1088.96875
   },
   "timings_sec": {
-    "convert games/users/metadata": 3.485,
-    "pass 1: chunked cleaning": 73.022,
-    "pass 2: global deduplication": 22.191,
-    "experiment sample": 3.72
+    "convert games/users/metadata": 4.236,
+    "pass 1: chunked cleaning": 87.211,
+    "pass 2: global deduplication": 23.647,
+    "experiment sample": 3.101
   },
   "sample": {
     "seed": 42,
