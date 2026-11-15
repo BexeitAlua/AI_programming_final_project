@@ -75,6 +75,7 @@ class TwoTowerModel(nn.Module):
         self.item_embedding = nn.Embedding(n_items, dim, padding_idx=PAD)
         self.item_mlp = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
         self.liked_embedding = nn.Embedding(2, dim)
+        nn.init.zeros_(self.liked_embedding.weight)
         self.user_mlp = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
 
     def item_tower(self, items):
