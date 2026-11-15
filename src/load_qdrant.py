@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 from qdrant_client import QdrantClient, models
 
-PAYLOAD_FLOATS = ["price", "log_reviews", "log_recent_reviews", "positive_share", "log_price", "log_age_days"]
+PAYLOAD_FLOATS = ["log_reviews", "log_recent_reviews", "positive_share", "log_price", "log_age_days"]
 
 
 def main() -> None:
@@ -35,8 +35,8 @@ def main() -> None:
         vector = {"two_tower": row.two_tower.tolist(), "text": row.text.tolist()}
         if row.als is not None:
             vector["als"] = row.als.tolist()
-        payload = {"app_id": int(row.app_id), "title": row.title, "tags": [str(t) for t in row.tags],
-                   "date_release": row.date_release}
+        payload = {"app_id": int(row.app_id), "title": row.title, "price": round(float(row.price), 2),
+                   "tags": [str(t) for t in row.tags], "date_release": row.date_release}
         payload |= {name: float(getattr(row, name)) for name in PAYLOAD_FLOATS}
         points.append(models.PointStruct(id=int(row.app_id), vector=vector, payload=payload))
     client.upload_points(collection, points, batch_size=512, wait=True)
