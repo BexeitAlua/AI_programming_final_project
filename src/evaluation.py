@@ -20,6 +20,7 @@ import pandas as pd
 
 from src.preprocessing import temporal_split
 from src.recommenders import ALSRecommender, BaseRecommender, PopularityRecommender
+from src.two_towers import TwoTowerRecommender
 from src.utils import PROCESSED_DIR, RESULTS_DIR, save_json
 
 METRICS_DIR = RESULTS_DIR / "metrics"
@@ -197,10 +198,43 @@ def run_als(factors=(32, 64, 128), regularizations=(0.01, 0.1, 1.0), alphas=(1, 
     return metrics_table()
 
 
+def run_two_tower(max_epochs: int = 40) -> pd.DataFrame:
+    """Train on train epoch by epoch and pick the epoch with the best NDCG@10 on val,
+    then refit on train + val for that many epochs and report test.
+
+    Users without history get all-time popularity.
+    """
+    history, target = load_split("val")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    model = TwoTowerRecommender()
+    model.prepare(history)
+    curve = []
+    for epoch in range(1, max_epochs + 1):
+        loss = model.train_epoch()
+        metrics = evaluate_model(model, data, fallback=fallback)
+        curve.append({"epoch": epoch, "loss": round(loss, 5), **metrics})
+        print(f"epoch={epoch:2d} loss={loss:.4f} ndcg@10={metrics['ndcg@10']:.4f} "
+              f"recall@10={metrics['recall@10']:.4f} recall@100={metrics['recall@100']:.4f}")
+    pd.DataFrame(curve).to_csv(METRICS_DIR / "two_tower_epochs_val.csv", index=False)
+
+    best = max(curve, key=lambda row: row["ndcg@10"])
+    save_metrics(best, "two_tower", "val")
+    print(f"best epoch on val: {best['epoch']}")
+
+    history, target = load_split("test")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    model = TwoTowerRecommender(epochs=best["epoch"]).fit(history)
+    save_metrics({**model.params, **evaluate_model(model, data, fallback=fallback)}, "two_tower", "test")
+    return metrics_table()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate recommenders on the temporal split")
-    parser.add_argument("--model", choices=["popularity", "als"], default="popularity")
+    parser.add_argument("--model", choices=["popularity", "als", "two_tower"], default="popularity")
     args = parser.parse_args()
-    table = run_popularity() if args.model == "popularity" else run_als()
+    runners = {"popularity": run_popularity, "als": run_als, "two_tower": run_two_tower}
+    table = runners[args.model]()
     pd.set_option("display.width", 200)
     print(table[[c for c in SHOW_COLS if c in table.columns]].to_string(index=False))

@@ -3,7 +3,6 @@ import pandas as pd
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 from src.recommenders import BaseRecommender
 
 PAD = 0
@@ -101,10 +100,10 @@ def in_batch_softmax_loss(user_vecs, item_vecs, targets, log_q, temperature) -> 
     logits = logits - log_q[targets][None, :]
 
     same = targets[:, None] == targets[None, :]
-    mask = same & ~torch.eye(B, dtype=torch.bool)
+    mask = same & ~torch.eye(B, dtype=torch.bool, device=targets.device)
     logits = logits.masked_fill(mask, float("-inf"))
 
-    return F.cross_entropy(logits, torch.arange(B))
+    return F.cross_entropy(logits, torch.arange(B, device=targets.device))
 
 
 class TwoTowerRecommender(BaseRecommender):
@@ -116,18 +115,19 @@ class TwoTowerRecommender(BaseRecommender):
                         "min_count": min_count, "temperature": temperature,
                         "batch_size": batch_size,
                         "lr": lr, "epochs": epochs}
-        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def prepare(self, history):
         torch.manual_seed(42)
         self.item_index, self.item_ids = build_item_index(history, self.params["min_count"])
-        self.examples = build_training_examples(history, self.item_index, self.params["max_len"])
+        examples = build_training_examples(history, self.item_index, self.params["max_len"])
+        self.examples = [x.to(self.device) for x in examples]
 
         targets = self.examples[3]
         counts = torch.bincount(targets, minlength=len(self.item_ids))
         self.log_q = torch.log((counts + 1) / len(targets))
 
-        self.model = TwoTowerModel(len(self.item_ids), self.params["dim"])
+        self.model = TwoTowerModel(len(self.item_ids), self.params["dim"]).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.params["lr"])
 
         self.histories = {}
@@ -139,9 +139,13 @@ class TwoTowerRecommender(BaseRecommender):
 
     def train_epoch(self) -> float:
         self.model.train()
-        loader = DataLoader(TensorDataset(*self.examples), batch_size=self.params["batch_size"], shuffle=True)
-        total_loss = 0.0
-        for items, weights, liked, targets in loader:
+        batch_size = self.params["batch_size"]
+        n = len(self.examples[3])
+        order = torch.randperm(n, device=self.device)
+        total_loss, n_batches = 0.0, 0
+        for start in range(0, n, batch_size):
+            batch = order[start:start + batch_size]
+            items, weights, liked, targets = [x[batch] for x in self.examples]
             user_vecs = self.model.user_tower(items, weights, liked)
             item_vecs = self.model.item_tower(targets)
             loss = in_batch_softmax_loss(user_vecs, item_vecs, targets, self.log_q, self.params["temperature"])
@@ -150,7 +154,8 @@ class TwoTowerRecommender(BaseRecommender):
             loss.backward()
             self.optimizer.step()
             total_loss += loss.item()
-        return total_loss / len(loader)
+            n_batches += 1
+        return total_loss / n_batches
 
     def fit(self, history) -> "TwoTowerRecommender":
         self.prepare(history)
@@ -166,7 +171,7 @@ class TwoTowerRecommender(BaseRecommender):
 
         self.model.eval()
         with torch.no_grad():
-            all_items = self.model.item_tower(torch.arange(len(self.item_ids)))
+            all_items = self.model.item_tower(torch.arange(len(self.item_ids), device=self.device))
 
             items, weights, liked = [], [], []
             for user in user_ids[known]:
@@ -175,7 +180,9 @@ class TwoTowerRecommender(BaseRecommender):
                 items.append(user_items)
                 weights.append(user_weights)
                 liked.append(user_liked)
-            user_vecs = self.model.user_tower(torch.stack(items), torch.stack(weights), torch.stack(liked))
+            user_vecs = self.model.user_tower(torch.stack(items).to(self.device),
+                                              torch.stack(weights).to(self.device),
+                                              torch.stack(liked).to(self.device))
 
             scores = user_vecs @ all_items.T
             scores[:, :2] = float("-inf")
@@ -184,7 +191,7 @@ class TwoTowerRecommender(BaseRecommender):
                 scores[row, seen_items] = float("-inf")
 
             top = scores.topk(k, dim=1)
-        top_ids = self.item_ids[top.indices]
-        top_ids[top.values == float("-inf")] = -1
+        top_ids = self.item_ids[top.indices.cpu()]
+        top_ids[top.values.cpu() == float("-inf")] = -1
         recs[known] = top_ids.numpy()
         return recs
