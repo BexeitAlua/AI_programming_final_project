@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from torch import nn
 import torch.nn.functional as F
+from src.game_features import build_catalog, build_game_features
 from src.recommenders import BaseRecommender
 
 PAD = 0
@@ -71,19 +72,53 @@ def build_training_examples(history, item_index, max_len) -> tuple[torch.Tensor,
     return items, weights, liked, targets
 
 class TwoTowerModel(nn.Module):
-    def __init__(self, n_items, dim):
+    """Item tower: [ID embedding] + [tags, text, numeric features] -> MLP -> L2 norm.
+
+    features=None gives the ID-only model, use_id=False the content-only model.
+    In the hybrid, rare games share the UNK id (id_of_item), and during training every id is replaced
+    by UNK with probability id_dropout, so the content part learns to describe a game on its own.
+    """
+
+    def __init__(self, n_items, dim, use_id=True, id_of_item=None, features=None, id_dropout=0.0):
         super().__init__()
-        self.item_embedding = nn.Embedding(n_items, dim, padding_idx=PAD)
-        self.item_mlp = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
+        self.use_id = use_id
+        self.use_content = features is not None
+        self.id_dropout = id_dropout
+        n_parts = 0
+        if self.use_id:
+            self.item_embedding = nn.Embedding(n_items, dim, padding_idx=PAD)
+            self.register_buffer("id_of_item", torch.arange(n_items) if id_of_item is None else id_of_item)
+            n_parts += 1
+        if self.use_content:
+            self.register_buffer("tags", features["tags"])
+            self.register_buffer("text", features["text"])
+            self.register_buffer("numeric", features["numeric"])
+            n_tags = int(features["tags"].max()) + 1
+            self.tag_embedding = nn.EmbeddingBag(n_tags, dim, mode="mean", padding_idx=PAD)
+            self.text_linear = nn.Linear(features["text"].shape[1], dim)
+            self.numeric_linear = nn.Linear(features["numeric"].shape[1], dim)
+            n_parts += 3
+        self.item_mlp = nn.Sequential(nn.Linear(n_parts * dim, dim), nn.ReLU(), nn.Linear(dim, dim))
         self.liked_embedding = nn.Embedding(2, dim)
         nn.init.zeros_(self.liked_embedding.weight)
         self.user_mlp = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
 
     def item_tower(self, items):
-        x = self.item_embedding(items)
-        x = self.item_mlp(x)
-        x = F.normalize(x, dim=-1)
-        return x
+        parts = []
+        if self.use_id:
+            ids = self.id_of_item[items]
+            if self.training and self.id_dropout > 0:
+                drop = torch.rand(ids.shape, device=ids.device) < self.id_dropout
+                ids = ids.masked_fill(drop & (ids != PAD), UNK)
+            parts.append(self.item_embedding(ids))
+        if self.use_content:
+            tags = self.tags[items]
+            tag_vecs = self.tag_embedding(tags.reshape(-1, tags.shape[-1]))
+            parts.append(tag_vecs.reshape(*items.shape, -1))
+            parts.append(self.text_linear(self.text[items]))
+            parts.append(self.numeric_linear(self.numeric[items]))
+        x = self.item_mlp(torch.cat(parts, dim=-1))
+        return F.normalize(x, dim=-1)
 
     def user_tower(self, items, weights, liked):
         h = self.item_tower(items) + self.liked_embedding(liked)
@@ -107,19 +142,38 @@ def in_batch_softmax_loss(user_vecs, item_vecs, targets, log_q, temperature) -> 
 
 
 class TwoTowerRecommender(BaseRecommender):
-    name = "two_tower"
+    """variant "id": ID embeddings of games with >= min_count reviews in history;
+    "content" / "hybrid": every game of the catalog (released by the end of history or already reviewed)
+    described by its features, plus an own ID for games with >= id_min_count reviews in the hybrid."""
 
-    def __init__(self, dim=64, max_len=50, min_count=2, temperature=0.05,
-                 batch_size=1024, lr=1e-3, epochs=10):
-        self.params = {"dim": dim, "max_len": max_len,
-                        "min_count": min_count, "temperature": temperature,
-                        "batch_size": batch_size,
+    def __init__(self, variant="id", dim=64, max_len=50, min_count=2, id_min_count=10, id_dropout=0.3,
+                 temperature=0.05, batch_size=1024, lr=1e-3, epochs=10):
+        self.variant = variant
+        self.name = "two_tower" if variant == "id" else f"two_tower_{variant}"
+        self.params = {"variant": variant, "dim": dim, "max_len": max_len,
+                        "min_count": min_count, "id_min_count": id_min_count, "id_dropout": id_dropout,
+                        "temperature": temperature, "batch_size": batch_size,
                         "lr": lr, "epochs": epochs}
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def prepare(self, history):
         torch.manual_seed(42)
-        self.item_index, self.item_ids = build_item_index(history, self.params["min_count"])
+        features, id_of_item = None, None
+        if self.variant == "id":
+            self.item_index, self.item_ids = build_item_index(history, self.params["min_count"])
+        else:
+            catalog = build_catalog(history)
+            self.item_index = {int(app_id): i + 2 for i, app_id in enumerate(catalog)}
+            self.item_ids = torch.tensor([-1, -1] + catalog.tolist())
+            features = build_game_features(catalog, history["date"].max())
+        if self.variant == "hybrid":
+            id_of_item = torch.full((len(self.item_ids),), UNK)
+            id_of_item[PAD] = PAD
+            review_count = history["app_id"].value_counts()
+            for app_id in review_count[review_count >= self.params["id_min_count"]].index:
+                idx = self.item_index[int(app_id)]
+                id_of_item[idx] = idx
+
         examples = build_training_examples(history, self.item_index, self.params["max_len"])
         self.examples = [x.to(self.device) for x in examples]
 
@@ -127,7 +181,9 @@ class TwoTowerRecommender(BaseRecommender):
         counts = torch.bincount(targets, minlength=len(self.item_ids))
         self.log_q = torch.log((counts + 1) / len(targets))
 
-        self.model = TwoTowerModel(len(self.item_ids), self.params["dim"]).to(self.device)
+        id_dropout = self.params["id_dropout"] if self.variant == "hybrid" else 0.0
+        self.model = TwoTowerModel(len(self.item_ids), self.params["dim"], use_id=self.variant != "content",
+                                   id_of_item=id_of_item, features=features, id_dropout=id_dropout).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.params["lr"])
 
         self.histories = {}

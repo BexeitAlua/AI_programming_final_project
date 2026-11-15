@@ -143,7 +143,7 @@ def metrics_table(split: str | None = None) -> pd.DataFrame:
 
 
 SHOW_COLS = ["model", "split", "recall@10", "ndcg@10", "hit_rate@10", "recall@100",
-             "recall_warm@10", "coverage@10", "recall_ceiling"]
+             "recall_warm@10", "recall_cold@100", "coverage@10", "recall_ceiling"]
 
 
 def run_popularity(windows: tuple = (None, 30, 90, 180, 365)) -> pd.DataFrame:
@@ -198,16 +198,16 @@ def run_als(factors=(32, 64, 128), regularizations=(0.01, 0.1, 1.0), alphas=(1, 
     return metrics_table()
 
 
-def run_two_tower(max_epochs: int = 40) -> pd.DataFrame:
+def run_two_tower(variant: str = "id", max_epochs: int = 40) -> pd.DataFrame:
     """Train on train epoch by epoch and pick the epoch with the best NDCG@10 on val,
     then refit on train + val for that many epochs and report test.
 
-    Users without history get all-time popularity.
+    variant: "id", "content" or "hybrid" (see TwoTowerRecommender). Users without history get all-time popularity.
     """
     history, target = load_split("val")
     data = build_eval_data(history, target)
     fallback = PopularityRecommender().fit(history)
-    model = TwoTowerRecommender()
+    model = TwoTowerRecommender(variant)
     model.prepare(history)
     curve = []
     for epoch in range(1, max_epochs + 1):
@@ -216,25 +216,27 @@ def run_two_tower(max_epochs: int = 40) -> pd.DataFrame:
         curve.append({"epoch": epoch, "loss": round(loss, 5), **metrics})
         print(f"epoch={epoch:2d} loss={loss:.4f} ndcg@10={metrics['ndcg@10']:.4f} "
               f"recall@10={metrics['recall@10']:.4f} recall@100={metrics['recall@100']:.4f}")
-    pd.DataFrame(curve).to_csv(METRICS_DIR / "two_tower_epochs_val.csv", index=False)
+    pd.DataFrame(curve).to_csv(METRICS_DIR / f"{model.name}_epochs_val.csv", index=False)
 
     best = max(curve, key=lambda row: row["ndcg@10"])
-    save_metrics(best, "two_tower", "val")
+    save_metrics(best, model.name, "val")
     print(f"best epoch on val: {best['epoch']}")
 
     history, target = load_split("test")
     data = build_eval_data(history, target)
     fallback = PopularityRecommender().fit(history)
-    model = TwoTowerRecommender(epochs=best["epoch"]).fit(history)
-    save_metrics({**model.params, **evaluate_model(model, data, fallback=fallback)}, "two_tower", "test")
+    model = TwoTowerRecommender(variant, epochs=best["epoch"]).fit(history)
+    save_metrics({**model.params, **evaluate_model(model, data, fallback=fallback)}, model.name, "test")
     return metrics_table()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate recommenders on the temporal split")
     parser.add_argument("--model", choices=["popularity", "als", "two_tower"], default="popularity")
+    parser.add_argument("--variant", choices=["id", "content", "hybrid"], default="id",
+                        help="Two-Tower item features")
     args = parser.parse_args()
-    runners = {"popularity": run_popularity, "als": run_als, "two_tower": run_two_tower}
+    runners = {"popularity": run_popularity, "als": run_als, "two_tower": lambda: run_two_tower(args.variant)}
     table = runners[args.model]()
     pd.set_option("display.width", 200)
     print(table[[c for c in SHOW_COLS if c in table.columns]].to_string(index=False))
