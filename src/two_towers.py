@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import torch
+from torch import nn
+import torch.nn.functional as F
 
 PAD = 0
 UNK = 1
@@ -66,3 +68,18 @@ def build_training_examples(history, item_index, max_len) -> tuple[torch.Tensor,
     liked = torch.stack(liked)
     targets = torch.tensor(targets)
     return items, weights, liked, targets
+
+class TwoTowerModel(nn.Module):
+    def __init__(self, n_items, dim):
+        super().__init__()
+        self.item_embedding = nn.Embedding(n_items, dim, padding_idx=PAD)
+        self.item_mlp = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
+        self.liked_embedding = nn.Embedding(2, dim)
+        self.user_mlp = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
+
+    def item_tower(self, items):
+        x = self.item_embedding(items)
+        x = self.item_mlp(x)
+        x = F.normalize(x, dim=-1)
+        return x
+
