@@ -15,6 +15,7 @@ dependencies = [
     "plotly==7.1.0",
     "psutil==7.2.2",
     "pyarrow==21.0.0",
+    "qdrant-client==1.20.0",
     "scipy==1.13.1",
     "sentence-transformers==6.3.0",
     "threadpoolctl==3.7.0",
