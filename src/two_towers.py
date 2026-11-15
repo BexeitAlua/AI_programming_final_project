@@ -147,13 +147,15 @@ class TwoTowerRecommender(BaseRecommender):
     described by its features, plus an own ID for games with >= id_min_count reviews in the hybrid."""
 
     def __init__(self, variant="id", dim=64, max_len=50, min_count=2, id_min_count=10, id_dropout=0.3,
-                 temperature=0.05, batch_size=1024, lr=1e-3, epochs=10):
+                 use_review_stats=True, temperature=0.05, batch_size=1024, lr=1e-3, epochs=10):
         self.variant = variant
         self.name = "two_tower" if variant == "id" else f"two_tower_{variant}"
+        if variant != "id" and not use_review_stats:
+            self.name += "_no_review_stats"
         self.params = {"variant": variant, "dim": dim, "max_len": max_len,
                         "min_count": min_count, "id_min_count": id_min_count, "id_dropout": id_dropout,
-                        "temperature": temperature, "batch_size": batch_size,
-                        "lr": lr, "epochs": epochs}
+                        "use_review_stats": use_review_stats, "temperature": temperature,
+                        "batch_size": batch_size, "lr": lr, "epochs": epochs}
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def prepare(self, history):
@@ -165,7 +167,7 @@ class TwoTowerRecommender(BaseRecommender):
             catalog = build_catalog(history)
             self.item_index = {int(app_id): i + 2 for i, app_id in enumerate(catalog)}
             self.item_ids = torch.tensor([-1, -1] + catalog.tolist())
-            features = build_game_features(catalog, history["date"].max())
+            features = build_game_features(catalog, history["date"].max(), self.params["use_review_stats"])
         if self.variant == "hybrid":
             id_of_item = torch.full((len(self.item_ids),), UNK)
             id_of_item[PAD] = PAD
@@ -220,10 +222,15 @@ class TwoTowerRecommender(BaseRecommender):
         return self
 
     def recommend(self, user_ids, seen, k) -> np.ndarray:
+        return self.candidates(user_ids, seen, k)[0]
+
+    def candidates(self, user_ids, seen, k) -> tuple[np.ndarray, np.ndarray]:
+        """Top-k app_ids per user and their scores u·g; empty slots are -1 with score -inf."""
         recs = np.full((len(user_ids), k), -1, dtype=np.int64)
+        rec_scores = np.full((len(user_ids), k), -np.inf, dtype=np.float32)
         known = np.array([user in self.histories for user in user_ids])
         if not known.any():
-            return recs
+            return recs, rec_scores
 
         self.model.eval()
         with torch.no_grad():
@@ -250,4 +257,5 @@ class TwoTowerRecommender(BaseRecommender):
         top_ids = self.item_ids[top.indices.cpu()]
         top_ids[top.values.cpu() == float("-inf")] = -1
         recs[known] = top_ids.numpy()
-        return recs
+        rec_scores[known] = top.values.cpu().numpy()
+        return recs, rec_scores

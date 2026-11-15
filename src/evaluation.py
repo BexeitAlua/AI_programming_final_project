@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from src.preprocessing import temporal_split
+from src.ranker import RankerRecommender
 from src.recommenders import ALSRecommender, BaseRecommender, PopularityRecommender
 from src.two_towers import TwoTowerRecommender
 from src.utils import PROCESSED_DIR, RESULTS_DIR, save_json
@@ -198,16 +199,17 @@ def run_als(factors=(32, 64, 128), regularizations=(0.01, 0.1, 1.0), alphas=(1, 
     return metrics_table()
 
 
-def run_two_tower(variant: str = "id", max_epochs: int = 40) -> pd.DataFrame:
+def run_two_tower(variant: str = "id", use_review_stats: bool = True, max_epochs: int = 40) -> pd.DataFrame:
     """Train on train epoch by epoch and pick the epoch with the best NDCG@10 on val,
     then refit on train + val for that many epochs and report test.
 
-    variant: "id", "content" or "hybrid" (see TwoTowerRecommender). Users without history get all-time popularity.
+    variant: "id", "content" or "hybrid" (see TwoTowerRecommender); use_review_stats=False drops the review
+    count and positive share from the game features (ablation). Users without history get all-time popularity.
     """
     history, target = load_split("val")
     data = build_eval_data(history, target)
     fallback = PopularityRecommender().fit(history)
-    model = TwoTowerRecommender(variant)
+    model = TwoTowerRecommender(variant, use_review_stats=use_review_stats)
     model.prepare(history)
     curve = []
     for epoch in range(1, max_epochs + 1):
@@ -225,18 +227,62 @@ def run_two_tower(variant: str = "id", max_epochs: int = 40) -> pd.DataFrame:
     history, target = load_split("test")
     data = build_eval_data(history, target)
     fallback = PopularityRecommender().fit(history)
-    model = TwoTowerRecommender(variant, epochs=best["epoch"]).fit(history)
+    model = TwoTowerRecommender(variant, use_review_stats=use_review_stats, epochs=best["epoch"]).fit(history)
     save_metrics({**model.params, **evaluate_model(model, data, fallback=fallback)}, model.name, "test")
+    return metrics_table()
+
+
+def run_ranker(n_candidates: int = 200) -> pd.DataFrame:
+    """Two-Tower (content, best epoch on val) candidates re-ranked by LightGBM LambdaRank.
+
+    val : generators fit on train, ranker trained on val likes of 80% of users; the other 20% are used
+          for early stopping and for the comparison with the plain Two-Tower order of the same candidates.
+    test: generators refit on train + val, the same ranker scores their candidates.
+    """
+    two_tower = json.loads((METRICS_DIR / "val_two_tower_content.json").read_text())
+    als = json.loads((METRICS_DIR / "val_als.json").read_text())
+    model = RankerRecommender(
+        generator_params={"variant": "content", "epochs": two_tower["epoch"]},
+        als_params={name: als[name] for name in ("factors", "regularization", "alpha", "iterations")},
+        n_candidates=n_candidates)
+
+    history, target = load_split("val")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    model.fit_generators(history)
+    holdout = model.train_ranker(data)
+    holdout_data = EvalData(user_ids=data.user_ids[holdout], relevant=[data.relevant[i] for i in holdout],
+                            seen=data.seen, catalog=data.catalog)
+    rows = []
+    for name, recommender in (("two_tower_content", model.generator), (model.name, model)):
+        metrics = evaluate_model(recommender, holdout_data, fallback=fallback)
+        rows.append({"model": name, **metrics})
+        print(f"val holdout {name:18s} ndcg@10={metrics['ndcg@10']:.4f} recall@10={metrics['recall@10']:.4f} "
+              f"recall@100={metrics['recall@100']:.4f}")
+    pd.DataFrame(rows).to_csv(METRICS_DIR / "ranker_holdout_val.csv", index=False)
+    save_metrics(rows[-1], model.name, "val")
+    model.feature_importance().rename("gain_share").to_csv(METRICS_DIR / "ranker_feature_importance.csv")
+
+    history, target = load_split("test")
+    data = build_eval_data(history, target)
+    fallback = PopularityRecommender().fit(history)
+    model.fit_generators(history)
+    metrics = evaluate_model(model, data, fallback=fallback)
+    save_metrics({"n_candidates": n_candidates, "generator_epochs": two_tower["epoch"],
+                  "ranker_trees": model.ranker.best_iteration_, **metrics}, model.name, "test")
     return metrics_table()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate recommenders on the temporal split")
-    parser.add_argument("--model", choices=["popularity", "als", "two_tower"], default="popularity")
+    parser.add_argument("--model", choices=["popularity", "als", "two_tower", "ranker"], default="popularity")
     parser.add_argument("--variant", choices=["id", "content", "hybrid"], default="id",
                         help="Two-Tower item features")
+    parser.add_argument("--no-review-stats", action="store_true",
+                        help="Two-Tower content/hybrid without review count and positive share")
     args = parser.parse_args()
-    runners = {"popularity": run_popularity, "als": run_als, "two_tower": lambda: run_two_tower(args.variant)}
+    runners = {"popularity": run_popularity, "als": run_als, "ranker": run_ranker,
+               "two_tower": lambda: run_two_tower(args.variant, not args.no_review_stats)}
     table = runners[args.model]()
     pd.set_option("display.width", 200)
     print(table[[c for c in SHOW_COLS if c in table.columns]].to_string(index=False))

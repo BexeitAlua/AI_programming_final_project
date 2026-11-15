@@ -8,6 +8,7 @@ dependencies = [
     "implicit==0.7.3",
     "ipykernel==6.31.0",
     "jupyter==1.1.1",
+    "lightgbm==4.7.0",
     "matplotlib==3.9.4",
     "numpy==2.0.2",
     "pandas==2.3.3",

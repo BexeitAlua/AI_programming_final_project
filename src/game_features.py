@@ -42,12 +42,27 @@ def text_embeddings() -> pd.DataFrame:
     return pd.DataFrame(cache["vectors"], index=cache["app_ids"])
 
 
-def build_game_features(app_ids: np.ndarray, history_end: pd.Timestamp) -> dict:
+def review_stats(app_ids: np.ndarray, history_end: pd.Timestamp, recent_days: int = 90) -> pd.DataFrame:
+    """Per game over the full review log up to `history_end`: n_reviews, n_positive, n_recent
+    (reviews in the last `recent_days`) and positive_share smoothed towards the global share."""
+    reviews = load_clean_reviews(["app_id", "date", "is_recommended"])
+    reviews = reviews[reviews["date"] <= history_end]
+    recent = reviews["date"] > history_end - pd.Timedelta(days=recent_days)
+    stats = reviews.assign(recent=recent).groupby("app_id").agg(
+        n_reviews=("is_recommended", "size"), n_positive=("is_recommended", "sum"), n_recent=("recent", "sum"))
+    stats = stats.reindex(app_ids, fill_value=0)
+    prior = reviews["is_recommended"].mean()
+    stats["positive_share"] = (stats["n_positive"] + prior * PRIOR_STRENGTH) / (stats["n_reviews"] + PRIOR_STRENGTH)
+    return stats
+
+
+def build_game_features(app_ids: np.ndarray, history_end: pd.Timestamp, use_review_stats: bool = True) -> dict:
     """Feature tables aligned with item indices: row 2 + i describes app_ids[i], rows PAD and UNK are zeros.
 
     tags    [n_items, MAX_TAGS] long  - tag numbers, 0 = no tag
     text    [n_items, 384]      float - sentence embedding
     numeric [n_items, 9]        float - standardized: log price, free, age, platforms, reviews so far
+                                        (7 columns without the review statistics)
     """
     games = pd.read_parquet(PROCESSED_DIR / "games.parquet").set_index("app_id").reindex(app_ids)
     meta = pd.read_parquet(PROCESSED_DIR / "games_metadata.parquet").set_index("app_id").reindex(app_ids)
@@ -60,11 +75,6 @@ def build_game_features(app_ids: np.ndarray, history_end: pd.Timestamp) -> dict:
             for col, tag in enumerate(game_tags[:MAX_TAGS]):
                 tags[row + 2, col] = tag_index[tag]
 
-    reviews = load_clean_reviews(["app_id", "date", "is_recommended"])
-    reviews = reviews[reviews["date"] <= history_end]
-    stats = reviews.groupby("app_id")["is_recommended"].agg(["size", "sum"]).reindex(app_ids, fill_value=0)
-    prior = reviews["is_recommended"].mean()
-
     numeric = pd.DataFrame({
         "log_price": np.log1p(games["price_original"]),
         "free": games["price_original"] == 0,
@@ -73,9 +83,12 @@ def build_game_features(app_ids: np.ndarray, history_end: pd.Timestamp) -> dict:
         "mac": games["mac"],
         "linux": games["linux"],
         "steam_deck": games["steam_deck"],
-        "log_reviews": np.log1p(stats["size"]),
-        "positive_share": (stats["sum"] + prior * PRIOR_STRENGTH) / (stats["size"] + PRIOR_STRENGTH),
-    }).astype(np.float32).fillna(0)
+    })
+    if use_review_stats:
+        stats = review_stats(app_ids, history_end)
+        numeric["log_reviews"] = np.log1p(stats["n_reviews"]).to_numpy()
+        numeric["positive_share"] = stats["positive_share"].to_numpy()
+    numeric = numeric.astype(np.float32).fillna(0)
     numeric = (numeric - numeric.mean()) / numeric.std().replace(0, 1)
 
     text = text_embeddings().reindex(app_ids, fill_value=0).to_numpy(np.float32)
