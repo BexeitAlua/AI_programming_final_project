@@ -1,0 +1,3 @@
+model,n_users,n_relevant,cold_share,recall_ceiling,recall@10,ndcg@10,hit_rate@10,recall_warm@10,recall_cold@10,coverage@10,recall@20,ndcg@20,hit_rate@20,recall_warm@20,recall_cold@20,coverage@20,recall@100,ndcg@100,hit_rate@100,recall_warm@100,recall_cold@100,coverage@100,users_without_recs,fallback
+two_tower_content,4208,8905,0.24357,0.73439,0.09052,0.05527,0.15328,0.12175,2e-05,0.0956,0.13579,0.06835,0.2222,0.18186,4e-05,0.14895,0.31198,0.10642,0.44677,0.42072,0.00059,0.42857,0,
+two_tower_ranker,4208,8905,0.24357,0.73439,0.1034,0.06454,0.17158,0.1385,0.0,0.07289,0.15241,0.07849,0.24216,0.20382,2e-05,0.10297,0.33421,0.11754,0.46792,0.44979,0.00026,0.30837,0,

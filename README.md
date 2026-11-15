@@ -20,19 +20,30 @@ https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 
 ## Setup
 
+The project uses [uv](https://docs.astral.sh/uv/) and Python 3.12 (`.python-version`).
+Dependencies are in `pyproject.toml`, exact versions in `uv.lock`.
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
+uv sync                  # creates .venv with Python 3.12 and installs everything from uv.lock
+uv add <package>         # add a dependency (updates pyproject.toml and uv.lock)
 ```
 
-## Preprocessing 
+On Linux/WSL `torch` is installed as the CPU build from the PyTorch index, on macOS from PyPI.
+
+Download the data into `data/raw/` (needs a Kaggle API token):
+
+```bash
+uv tool install --with six kaggle
+kaggle datasets download antonkozyriev/game-recommendations-on-steam -p data/raw --unzip
+```
+
+## Preprocessing
 
 Run from the project root:
 
 ```bash
-python -m src.preprocessing                 
-python -m src.preprocessing --max-chunks 4   
+uv run python -m src.preprocessing
+uv run python -m src.preprocessing --max-chunks 4   # quick run on the first chunks
 ```
 
 Options: `--chunksize 500000 --buckets 16 --sample-users 50000 --min-interactions 5 --seed 42`.
@@ -62,3 +73,14 @@ Outputs:
 | `results/sample_info.json` | size and parameters of the experiment sample |
 
 The notebook `notebooks/experiment.ipynb` shows the first look at the data (100k rows), the audit and the results.
+
+## Evaluation
+
+```bash
+uv run python -m src.evaluation --model popularity
+uv run python -m src.evaluation --model als
+uv run pytest
+```
+
+Protocol (`src/evaluation.py`): tune on val (fit on train), final numbers on test (fit on train + val).
+Metrics are saved to `results/metrics/`.
