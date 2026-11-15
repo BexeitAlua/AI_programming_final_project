@@ -91,3 +91,15 @@ class TwoTowerModel(nn.Module):
         u = numerator / denominator
         u = self.user_mlp(u)
         return F.normalize(u, dim=-1)
+
+
+def in_batch_softmax_loss(user_vecs, item_vecs, targets, log_q, temperature) -> torch.Tensor:
+    B = len(targets)
+    logits = user_vecs @ item_vecs.T / temperature
+    logits = logits - log_q[targets][None, :]
+
+    same = targets[:, None] == targets[None, :]
+    mask = same & ~torch.eye(B, dtype=torch.bool)
+    logits = logits.masked_fill(mask, float("-inf"))
+
+    return F.cross_entropy(logits, torch.arange(B))
