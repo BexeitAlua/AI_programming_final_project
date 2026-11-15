@@ -39,3 +39,30 @@ def encode_history(app_ids, hours, liked, item_index, max_len) -> tuple[torch.Te
     likes = torch.tensor(likes, dtype=torch.long)
 
     return items, weights, likes
+
+def build_training_examples(history, item_index, max_len) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    history = history.sort_values(by=["user_id", "date", "review_id"]) 
+
+    items: list = []
+    weights: list = []
+    liked: list = []
+    targets: list = []
+
+    for user_id, user_reviews in history.groupby("user_id"):
+        app_ids = user_reviews["app_id"].to_numpy()
+        hours = user_reviews["hours"].to_numpy()
+        likes = user_reviews["is_recommended"].to_numpy()
+
+        for t in range(1, len(app_ids)):
+            if likes[t] and int(app_ids[t]) in item_index:
+                ctx_items, ctx_weights, ctx_liked = encode_history(app_ids[:t], hours[:t], likes[:t], item_index, max_len)
+                items.append(ctx_items)
+                weights.append(ctx_weights)
+                liked.append(ctx_liked)
+                targets.append(item_index[int(app_ids[t])])
+
+    items = torch.stack(items)
+    weights = torch.stack(weights)
+    liked = torch.stack(liked)
+    targets = torch.tensor(targets)
+    return items, weights, liked, targets
