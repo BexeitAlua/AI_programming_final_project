@@ -3,6 +3,8 @@ import pandas as pd
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+from src.recommenders import BaseRecommender
 
 PAD = 0
 UNK = 1
@@ -103,3 +105,86 @@ def in_batch_softmax_loss(user_vecs, item_vecs, targets, log_q, temperature) -> 
     logits = logits.masked_fill(mask, float("-inf"))
 
     return F.cross_entropy(logits, torch.arange(B))
+
+
+class TwoTowerRecommender(BaseRecommender):
+    name = "two_tower"
+
+    def __init__(self, dim=64, max_len=50, min_count=2, temperature=0.05,
+                 batch_size=1024, lr=1e-3, epochs=10):
+        self.params = {"dim": dim, "max_len": max_len,
+                        "min_count": min_count, "temperature": temperature,
+                        "batch_size": batch_size,
+                        "lr": lr, "epochs": epochs}
+        
+
+    def prepare(self, history):
+        torch.manual_seed(42)
+        self.item_index, self.item_ids = build_item_index(history, self.params["min_count"])
+        self.examples = build_training_examples(history, self.item_index, self.params["max_len"])
+
+        targets = self.examples[3]
+        counts = torch.bincount(targets, minlength=len(self.item_ids))
+        self.log_q = torch.log((counts + 1) / len(targets))
+
+        self.model = TwoTowerModel(len(self.item_ids), self.params["dim"])
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.params["lr"])
+
+        self.histories = {}
+        history = history.sort_values(["user_id", "date", "review_id"])
+        for user_id, user_reviews in history.groupby("user_id"):
+            self.histories[user_id] = (user_reviews["app_id"].to_numpy(),
+                                       user_reviews["hours"].to_numpy(),
+                                       user_reviews["is_recommended"].to_numpy())
+
+    def train_epoch(self) -> float:
+        self.model.train()
+        loader = DataLoader(TensorDataset(*self.examples), batch_size=self.params["batch_size"], shuffle=True)
+        total_loss = 0.0
+        for items, weights, liked, targets in loader:
+            user_vecs = self.model.user_tower(items, weights, liked)
+            item_vecs = self.model.item_tower(targets)
+            loss = in_batch_softmax_loss(user_vecs, item_vecs, targets, self.log_q, self.params["temperature"])
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            total_loss += loss.item()
+        return total_loss / len(loader)
+
+    def fit(self, history) -> "TwoTowerRecommender":
+        self.prepare(history)
+        for _ in range(self.params["epochs"]):
+            self.train_epoch()
+        return self
+
+    def recommend(self, user_ids, seen, k) -> np.ndarray:
+        recs = np.full((len(user_ids), k), -1, dtype=np.int64)
+        known = np.array([user in self.histories for user in user_ids])
+        if not known.any():
+            return recs
+
+        self.model.eval()
+        with torch.no_grad():
+            all_items = self.model.item_tower(torch.arange(len(self.item_ids)))
+
+            items, weights, liked = [], [], []
+            for user in user_ids[known]:
+                user_items, user_weights, user_liked = encode_history(
+                    *self.histories[user], self.item_index, self.params["max_len"])
+                items.append(user_items)
+                weights.append(user_weights)
+                liked.append(user_liked)
+            user_vecs = self.model.user_tower(torch.stack(items), torch.stack(weights), torch.stack(liked))
+
+            scores = user_vecs @ all_items.T
+            scores[:, :2] = float("-inf")
+            for row, user in enumerate(user_ids[known]):
+                seen_items = [self.item_index[int(a)] for a in seen.get(user, []) if int(a) in self.item_index]
+                scores[row, seen_items] = float("-inf")
+
+            top = scores.topk(k, dim=1)
+        top_ids = self.item_ids[top.indices]
+        top_ids[top.values == float("-inf")] = -1
+        recs[known] = top_ids.numpy()
+        return recs
