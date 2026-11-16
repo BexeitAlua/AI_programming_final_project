@@ -1,0 +1,20 @@
+{
+  "split": "test",
+  "models": [
+    "popularity_all",
+    "item_cf",
+    "als"
+  ],
+  "n_users": 28188,
+  "group_sizes": {
+    "tail": 16100,
+    "mid": 1610,
+    "head": 179
+  },
+  "best_model": "als",
+  "example_users": [
+    6753427,
+    7840900,
+    7949911
+  ]
+}

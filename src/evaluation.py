@@ -1,13 +1,3 @@
-"""Offline evaluation protocol shared by all recommenders.
-
-* split 'val'  : fit on train,       evaluate on val   (model selection / tuning)
-* split 'test' : fit on train + val, evaluate on test  (final numbers)
-* relevant items  = target-period reviews with is_recommended = True
-* evaluated users = users with history and >= 1 relevant item in the target period
-* games from the user's history (liked or not) are excluded from recommendations
-* 'warm' game = present in history, 'cold' game = new. ID-based models cannot recommend cold
-  games, `recall_ceiling` is the best recall they could reach.
-"""
 from __future__ import annotations
 
 import argparse
@@ -111,19 +101,25 @@ def evaluate(recs: np.ndarray, data: EvalData, ks: tuple = DEFAULT_KS) -> dict:
             for key, value in result.items()}
 
 
-def evaluate_model(model: BaseRecommender, data: EvalData, ks: tuple = DEFAULT_KS,
-                   batch_size: int = 4096, fallback: BaseRecommender | None = None) -> dict:
-    """Recommend in user batches and evaluate.
+def recommend_all(model: BaseRecommender, data: EvalData, k: int, batch_size: int = 4096,
+                  fallback: BaseRecommender | None = None) -> tuple:
+    """Top-k for every evaluated user, in user batches. Returns (recs, missing).
 
-    Users the model returns nothing for (first slot is -1) get `fallback` recommendations,
+    Users the model returns nothing for (first slot is -1, `missing`) get `fallback` recommendations,
     so they stay in the evaluation instead of silently inflating the metrics.
     """
-    kmax = max(ks)
-    recs = np.vstack([model.recommend(data.user_ids[s:s + batch_size], data.seen, kmax)
+    recs = np.vstack([model.recommend(data.user_ids[s:s + batch_size], data.seen, k)
                       for s in range(0, len(data.user_ids), batch_size)])
     missing = recs[:, 0] < 0
     if fallback is not None and missing.any():
-        recs[missing] = fallback.recommend(data.user_ids[missing], data.seen, kmax)
+        recs[missing] = fallback.recommend(data.user_ids[missing], data.seen, k)
+    return recs, missing
+
+
+def evaluate_model(model: BaseRecommender, data: EvalData, ks: tuple = DEFAULT_KS,
+                   batch_size: int = 4096, fallback: BaseRecommender | None = None) -> dict:
+    """Recommend in user batches (see recommend_all) and evaluate."""
+    recs, missing = recommend_all(model, data, max(ks), batch_size, fallback)
     metrics = evaluate(recs, data, ks)
     metrics["users_without_recs"] = int(missing.sum())
     metrics["fallback"] = fallback.name if fallback is not None and missing.any() else None
