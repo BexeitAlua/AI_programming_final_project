@@ -1,0 +1,2 @@
+model,n_users,k,total_time_sec,avg_latency_ms,median_latency_ms,p95_latency_ms
+Two-Tower + LightGBM,100,10,2.185790251998924,21.85790251998924,21.12750000003416,26.18999760005636

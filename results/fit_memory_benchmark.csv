@@ -1,0 +1,4 @@
+model,fit_time_sec,baseline_rss_mb,peak_rss_mb,peak_increase_mb
+Popularity,0.0086,592.81,593.41,0.59
+Item-CF,0.5124,593.41,732.3,138.89
+ALS,3.2913,732.27,736.98,4.72
